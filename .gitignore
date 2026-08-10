@@ -1,0 +1,11 @@
+.env
+*.tsv
+*.tsv.progress
+*.csv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+myenv/
+.idea/
+.DS_Store
