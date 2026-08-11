@@ -76,9 +76,13 @@ def parse_args():
     ap.add_argument("--key-column", default="id", help="колонка ключа в key-table (default id)")
     ap.add_argument("--key-expr", help="как ключ пишется в запросе, для /*BATCH*/ (default = --key-column)")
     ap.add_argument("--key-where", help="доп. фильтр для источника границ, напр. \"status <> 'DELETED'\"")
-    ap.add_argument("--batch-size", type=int, default=50_000, help="строк ключа в окне (default 50000)")
+    ap.add_argument("--batch-size", type=int, default=10_000, help="строк ключа в окне (default 10000)")
     ap.add_argument("--jobs", type=int, default=1, help="параллельных батчей (default 1; >1 ломает порядок строк)")
-    ap.add_argument("--stmt-timeout-ms", type=int, default=300_000, help="statement_timeout на батч (0 = без лимита)")
+    ap.add_argument("--stmt-timeout-ms", type=int, default=60_000,
+                    help="statement_timeout на батч, мс (default 60000; 0 = без лимита)")
+    ap.add_argument("--sleep", type=float, default=3,
+                    help="пауза после каждого окна, сек (default 3) — троттлинг, чтобы не давить "
+                         "реплику; 0 = гнать вплотную. При --jobs > 1 пауза у каждого воркера своя")
     ap.add_argument("--wrap", metavar="COL", help="обернуть запрос без плейсхолдеров, фильтруя по колонке COL")
     ap.add_argument("--explain", action="store_true", help="показать EXPLAIN первого батча и выйти")
     ap.add_argument("--dry-run", action="store_true", help="показать итоговый SQL и список окон, не выполнять")
@@ -311,6 +315,9 @@ def main():
             print(f"  [{state['batches']}/{len(todo)}] ({lo}, {hi}]: "
                   f"+{len(rows)} строк за {time.time() - t0:.1f}с (всего {state['rows']})")
 
+        if args.sleep:            # троттлинг — вне lock, иначе воркеры ждали бы друг друга
+            time.sleep(args.sleep)
+
     t0 = time.time()
     try:
         if args.jobs > 1:
@@ -325,7 +332,8 @@ def main():
             progress_f.close()
         conn.close()
 
-    print(f"\nГотово: {state['rows']} строк за {(time.time() - t0) / 60:.1f} мин"
+    el = time.time() - t0
+    print(f"\nГотово: {state['rows']} строк за {f'{el:.1f}с' if el < 60 else f'{el / 60:.1f} мин'}"
           + (f" -> {args.out}" if args.out else ""))
     if progress_path:
         print(f"{progress_path} можно удалить после успешного завершения.")
